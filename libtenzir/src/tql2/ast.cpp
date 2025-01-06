@@ -324,6 +324,14 @@ auto split_legacy_expression(const ast::expression& x)
       if (y.op.inner == ast::binary_op::and_) {
         auto [lo, ln] = split_legacy_expression(y.left);
         auto [ro, rn] = split_legacy_expression(y.right);
+        auto o = expression{};
+        if (lo == trivially_true_expression()) {
+          o = std::move(ro);
+        } else if (ro == trivially_true_expression()) {
+          o = std::move(lo);
+        } else {
+          o = conjunction{std::move(lo), std::move(ro)};
+        }
         auto n = ast::expression{};
         if (is_true_literal(ln)) {
           n = std::move(rn);
@@ -333,7 +341,7 @@ auto split_legacy_expression(const ast::expression& x)
           n = ast::expression{
             ast::binary_expr{std::move(ln), y.op, std::move(rn)}};
         }
-        return std::pair{expression{conjunction{lo, ro}}, std::move(n)};
+        return std::pair{std::move(o), std::move(n)};
       }
       if (y.op.inner == ast::binary_op::or_) {
         auto [lo, ln] = split_legacy_expression(y.left);
