@@ -36,7 +36,8 @@ public:
   auto make(operator_factory_plugin::invocation inv, session ctx) const
     -> failure_or<operator_ptr>;
 
-private:
+  // TODO
+public:
   std::variant<std::reference_wrapper<const operator_factory_plugin>,
                user_defined_operator>
     kind_;

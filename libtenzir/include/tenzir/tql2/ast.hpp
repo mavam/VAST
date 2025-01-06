@@ -12,6 +12,7 @@
 #include "tenzir/detail/default_formatter.hpp"
 #include "tenzir/detail/enum.hpp"
 #include "tenzir/detail/type_list.hpp"
+#include "tenzir/diagnostics.hpp"
 #include "tenzir/location.hpp"
 #include "tenzir/tql2/entity_path.hpp"
 
@@ -30,6 +31,35 @@ auto make_dependent(U&& x) -> U&& {
 }
 
 } // namespace tenzir::detail
+
+namespace tenzir::ir {
+
+// TODO: Move this?
+struct let_id {
+  uint64_t id = 0;
+
+  auto operator<=>(const let_id&) const = default;
+
+  friend auto inspect(auto& f, let_id& x) -> bool {
+    return f.apply(x.id);
+  }
+};
+
+} // namespace tenzir::ir
+
+template <>
+struct std::hash<tenzir::ir::let_id> {
+  auto operator()(const tenzir::ir::let_id& x) const -> size_t {
+    return std::hash<decltype(x.id)>{}(x.id);
+  }
+};
+
+namespace tenzir {
+
+template <>
+inline constexpr auto enable_default_formatter<ir::let_id> = true;
+
+} // namespace tenzir
 
 namespace tenzir::ast {
 
@@ -83,10 +113,30 @@ struct underscore : location {
   }
 };
 
-struct dollar_var : identifier {
-  auto get_location() const -> tenzir::location {
-    return identifier::location;
+struct dollar_var {
+  dollar_var() = default;
+
+  explicit dollar_var(identifier ident)
+    : name{std::move(ident.name)}, location{ident.location} {
   }
+
+  auto get_location() const -> tenzir::location {
+    return location;
+  }
+
+  friend auto inspect(auto& f, dollar_var& x) -> bool {
+    if (auto dbg = as_debug_writer(f)) {
+      return dbg->fmt_value("`{}`", x.name) && dbg->append(" -> {:?}", x.let)
+             && dbg->append(" @ {:?}", x.location);
+    }
+    return f.object(x).fields(f.field("name", x.name),
+                              f.field("location", x.location),
+                              f.field("let", x.let));
+  }
+
+  std::string name;
+  tenzir::location location;
+  ir::let_id let;
 };
 
 struct null {};
@@ -155,6 +205,8 @@ using expression_kinds
 
 using expression_kind = detail::tl_apply_t<expression_kinds, variant>;
 
+TENZIR_ENUM(substitute_result, no_remaining, some_remaining);
+
 struct expression {
   expression() = default;
 
@@ -198,6 +250,8 @@ struct expression {
   auto match(Fs&&... fs) const&& -> decltype(auto);
 
   auto get_location() const -> location;
+
+  auto substitute(substitute_ctx ctx) -> failure_or<substitute_result>;
 };
 
 /// A "simple selector" has a path that contains only constant field names.
@@ -563,6 +617,8 @@ struct pipeline {
   friend auto inspect(Inspector& f, pipeline& x) -> bool {
     return f.apply(x.body);
   }
+
+  auto compile(compile_ctx ctx) && -> failure_or<ir::pipeline>;
 };
 
 struct let_stmt {
@@ -842,7 +898,7 @@ protected:
   }
 
   void enter(ast::dollar_var& x) {
-    go(static_cast<ast::identifier&>(x));
+    TENZIR_UNUSED(x);
   }
 
   void enter(ast::unpack& x) {
