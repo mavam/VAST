@@ -1,0 +1,15 @@
+{
+  lets: [
+    {
+      ident: `$foo` @ 4..8,
+      expr: constant {
+        value: int64 42,
+        source: 11..13
+      },
+      id: 1
+    }
+  ],
+  operators: [
+    
+  ]
+}

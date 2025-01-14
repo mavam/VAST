@@ -20,14 +20,20 @@ using operator_actor = int;
 
 class instantiate_ctx {
 public:
-  explicit(false) operator diagnostic_handler&() const;
+  explicit(false) operator diagnostic_handler&() const {
+    TENZIR_TODO();
+  }
 };
 
 class substitute_ctx {
 public:
-  auto get(ir::let_id id) const -> std::optional<ast::constant::kind>;
+  auto get(ir::let_id id) const -> std::optional<ast::constant::kind> {
+    TENZIR_TODO();
+  }
 
-  explicit(false) operator diagnostic_handler&() const;
+  explicit(false) operator diagnostic_handler&() const {
+    TENZIR_TODO();
+  }
 };
 
 namespace ir {
@@ -38,7 +44,9 @@ public:
 
   // The instance already knows its own configuration. The arguments are just
   // for establishing streams, etc.
-  virtual auto spawn(/*args*/) const -> operator_actor;
+  virtual auto spawn(/*args*/) const -> operator_actor {
+    TENZIR_TODO();
+  }
 };
 
 // TODO: Can we inspect this? We probably need to.
@@ -83,7 +91,9 @@ public:
 
   // There needs to be a matching plugin registered for it, right?
   // Only need this for serialization...
-  virtual auto name() const -> std::string;
+  virtual auto name() const -> std::string {
+    TENZIR_TODO();
+  }
 
   virtual auto substitute(substitute_ctx ctx) -> failure_or<void> = 0;
 
@@ -93,18 +103,20 @@ public:
     = 0;
 
   // TODO: Or can we give the optimizer a more global view?
-  virtual auto optimize(/*args*/) -> std::monostate;
+  // virtual auto optimize(/*args*/) -> std::monostate;
 };
 
 // Just like `std::unique_ptr`, but copyable!
 class operator_ptr {
 public:
-  operator_ptr() = default;
   ~operator_ptr() = default;
   operator_ptr(const operator_ptr&);
   operator_ptr(operator_ptr&&) = default;
   auto operator=(const operator_ptr&) -> operator_ptr&;
   auto operator=(operator_ptr&&) -> operator_ptr& = default;
+
+  operator_ptr(std::nullptr_t) {
+  }
 
   template <std::derived_from<operator_base> T>
   explicit(false) operator_ptr(std::unique_ptr<T> ptr) : ptr_{std::move(ptr)} {
@@ -124,20 +136,27 @@ public:
     return *ptr_;
   }
 
+  friend auto inspect(auto& f, operator_ptr& x) -> bool {
+    return plugin_inspect(f, x.ptr_);
+  }
+
 private:
   std::unique_ptr<operator_base> ptr_;
 };
 
 struct let {
-  let(let_id id, ast::expression expr) : id{id}, expr{std::move(expr)} {
+  let(ast::identifier ident, ast::expression expr, let_id id)
+    : ident{std::move(ident)}, expr{std::move(expr)}, id{id} {
   }
 
   friend auto inspect(auto& f, let& x) -> bool {
-    return f.object(x).fields(f.field("id", x.id), f.field("expr", x.expr));
+    return f.object(x).fields(f.field("ident", x.ident),
+                              f.field("expr", x.expr), f.field("id", x.id));
   }
 
-  let_id id;
+  ast::identifier ident;
   ast::expression expr;
+  let_id id;
 };
 
 struct pipeline_instance {
@@ -189,6 +208,9 @@ struct pipeline {
 };
 
 } // namespace ir
+
+template <>
+inline constexpr auto enable_default_formatter<ir::pipeline> = true;
 
 // Plugin name matches `ir::operator_base` above.
 class op_thingy_plugin : public plugin {

@@ -109,6 +109,7 @@ public:
   auto substitute(substitute_ctx ctx) -> failure_or<void> override {
     TRY(over_.substitute(ctx));
     TRY(pipe_.substitute(ctx));
+    return {};
   }
 
   auto
@@ -244,11 +245,13 @@ public:
           }
           interval_ = *cast;
         }
+        return {};
       },
       [&](duration&) -> failure_or<void> {
         return {};
       }));
     TRY(pipe_.substitute(ctx));
+    return {};
   }
 
   friend auto inspect(auto& f, every_ir& x) -> bool {
@@ -357,6 +360,7 @@ public:
     TRY(condition_.substitute(ctx));
     TRY(then_.substitute(ctx));
     TRY(else_.substitute(ctx));
+    return {};
   }
 
   auto
@@ -393,7 +397,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
           // TODO: What about diagnostics that end up here?
           // We need to provide a context that does not feature any outer
           // variables. Maybe if there were arguments.
-          auto udo_ctx = compile_ctx{};
+          auto udo_ctx = compile_ctx::test(ctx.dh());
           // What if we don't get its IR, but use the AST instead? That would
           // mean that we would have to compile its AST again and again. But
           // that's okay. So we get by with random let ids?
@@ -425,7 +429,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
       },
       [&](ast::let_stmt& x) -> failure_or<void> {
         auto id = ctx.let(x.name.name);
-        lets.emplace_back(id, x.expr);
+        lets.emplace_back(std::move(x.name), x.expr, id);
         return {};
       },
       [&](ast::if_stmt& x) -> failure_or<void> {
@@ -450,6 +454,16 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
   return ir::pipeline{std::move(lets), std::move(operators)};
 }
 
+auto ir::pipeline::substitute(substitute_ctx ctx) -> failure_or<void> {
+  for (auto& let : lets) {
+    TRY(let.expr.substitute(ctx));
+  }
+  for (auto& op : operators) {
+    TRY(op->substitute(ctx));
+  }
+  return {};
+}
+
 auto ir::pipeline::instantiate(
   instantiate_ctx ctx) && -> failure_or<ir::instantiation> {
   // TODO: Does this make sense?
@@ -458,11 +472,20 @@ auto ir::pipeline::instantiate(
     // We have to update every expression as we evaluate `let`s because later
     // bindings might reference earlier ones.
     auto sub_ctx = substitute_ctx{/*env*/};
-    TRY(let.expr.substitute(sub_ctx));
+    TRY(auto subst, let.expr.substitute(sub_ctx));
+    TENZIR_ASSERT(subst == ast::substitute_result::no_remaining);
     TRY(auto value, const_eval(let.expr, ctx));
-    // TODO
-    // auto inserted = env.emplace(let.id, value).second;
-    // TENZIR_ASSERT(inserted);
+    // TODO: Clean this up.
+    auto converted = match(
+      value,
+      [](auto& x) -> ast::constant::kind {
+        return std::move(x);
+      },
+      [](pattern&) -> ast::constant::kind {
+        TENZIR_UNREACHABLE();
+      });
+    auto inserted = env.try_emplace(let.id, std::move(converted)).second;
+    TENZIR_ASSERT(inserted);
   }
   // Now we first have to update each operator with the produced bindings, and
   // then instantiate it.

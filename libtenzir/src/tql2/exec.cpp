@@ -8,9 +8,11 @@
 
 #include "tenzir/tql2/exec.hpp"
 
+#include "tenzir/compile_ctx.hpp"
 #include "tenzir/detail/assert.hpp"
 #include "tenzir/diagnostics.hpp"
 #include "tenzir/exec_pipeline.hpp"
+#include "tenzir/ir.hpp"
 #include "tenzir/pipeline.hpp"
 #include "tenzir/session.hpp"
 #include "tenzir/tql2/ast.hpp"
@@ -333,6 +335,13 @@ auto exec2(std::string_view source, diagnostic_handler& dh,
     if (cfg.dump_ast) {
       fmt::print("{:#?}\n", parsed);
       return not ctx.has_failure();
+    }
+    if (cfg.dump_ir) {
+      auto compile = compile_ctx::test(ctx.dh());
+      TRY(auto ir, std::move(parsed).compile(compile));
+      fmt::print("{:#?}\n", ir);
+      // TODO: Maybe not true.
+      return true;
     }
     TRY(auto pipe, compile(std::move(parsed), ctx));
     if (cfg.dump_pipeline) {
