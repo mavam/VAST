@@ -115,7 +115,7 @@ public:
   auto operator=(const operator_ptr&) -> operator_ptr&;
   auto operator=(operator_ptr&&) -> operator_ptr& = default;
 
-  operator_ptr(std::nullptr_t) {
+  explicit(false) operator_ptr(std::nullptr_t) {
   }
 
   template <std::derived_from<operator_base> T>

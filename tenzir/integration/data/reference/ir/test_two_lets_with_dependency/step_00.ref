@@ -1,21 +1,21 @@
 {
   lets: [
     {
-      ident: `$foo` @ 4..8,
+      ident: `$foo` @ 5..9,
       expr: constant {
         value: int64 42,
-        source: 11..13
+        source: 12..14
       },
       id: 1
     },
     {
-      ident: `$bar` @ 20..24,
+      ident: `$bar` @ 19..23,
       expr: binary_expr {
-        left: dollar_var `$foo` -> 1 @ 27..31,
-        op: "add" @ 32..33,
+        left: dollar_var `$foo` -> 1 @ 26..30,
+        op: "add" @ 31..32,
         right: constant {
           value: int64 1,
-          source: 34..35
+          source: 33..34
         }
       },
       id: 2

@@ -393,34 +393,47 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
         // for not resolving names in general before... Or is it?
         // Let's say we don't do name-resolution. Then the operator will receive
         // a non-resolved `ast::dollar_var` somewhere.
-        auto udo = false;
-        if (udo) {
-          // TODO: What about diagnostics that end up here?
-          // We need to provide a context that does not feature any outer
-          // variables. Maybe if there were arguments.
-          auto udo_ctx = ctx.with_empty_env();
-          // What if we don't get its IR, but use the AST instead? That would
-          // mean that we would have to compile its AST again and again. But
-          // that's okay. So we get by with random let ids?
-          auto definition = ast::pipeline{};
-          TRY(auto pipe, std::move(definition).compile(udo_ctx));
-          // If it would have arguments, we need to create appropriate bindings
-          // now. For constant arguments, we could bind the parameters to a new
-          // `let` that stores that value. For non-constant arguments, if we
-          // want to use the same `let` mechanism, then we could introduce a new
-          // constant that can store expressions that will be evaluated later.
-          lets.insert(lets.end(), std::move_iterator{pipe.lets.begin()},
-                      std::move_iterator{pipe.lets.end()});
-          operators.insert(operators.begin(),
-                           std::move_iterator{pipe.operators.begin()},
-                           std::move_iterator{pipe.operators.end()});
-        } else {
-          auto plugin = static_cast<op_parser_plugin*>(nullptr);
-          TRY(auto op, plugin->compile(x, ctx));
-          TENZIR_ASSERT(op);
-          operators.push_back(std::move(op));
-        }
-        return {};
+        auto& op = ctx.reg().get(x);
+        return match(
+          op.inner(),
+          [&](const builtin_operator& op) -> failure_or<void> {
+            if (not op.ir_plugin) {
+              diagnostic::error("this operator cannot be used with the new IR")
+                .primary(x.op)
+                .emit(ctx);
+              return failure::promise();
+            }
+            // TODO
+            auto plugin = static_cast<op_parser_plugin*>(nullptr);
+            TENZIR_ASSERT(plugin);
+            TRY(auto compiled, plugin->compile(x, ctx));
+            TENZIR_ASSERT(compiled);
+            operators.push_back(std::move(compiled));
+            return {};
+          },
+          [&](const user_defined_operator& op) -> failure_or<void> {
+            // TODO: What about diagnostics that end up here?
+            // We need to provide a context that does not feature any outer
+            // variables. Maybe if there were arguments.
+            auto udo_ctx = ctx.with_empty_env();
+            // What if we don't get its IR, but use the AST instead? That would
+            // mean that we would have to compile its AST again and again. But
+            // that's okay. So we get by with random let ids?
+            auto definition = op.definition;
+            TRY(auto pipe, std::move(definition).compile(udo_ctx));
+            // If it would have arguments, we need to create appropriate
+            // bindings now. For constant arguments, we could bind the
+            // parameters to a new `let` that stores that value. For
+            // non-constant arguments, if we want to use the same `let`
+            // mechanism, then we could introduce a new constant that can store
+            // expressions that will be evaluated later.
+            lets.insert(lets.end(), std::move_iterator{pipe.lets.begin()},
+                        std::move_iterator{pipe.lets.end()});
+            operators.insert(operators.begin(),
+                             std::move_iterator{pipe.operators.begin()},
+                             std::move_iterator{pipe.operators.end()});
+            return {};
+          });
       },
       [&](ast::assignment& x) -> failure_or<void> {
         diagnostic::error("assignment is not implemented yet")

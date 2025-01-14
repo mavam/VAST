@@ -21,6 +21,18 @@ struct user_defined_operator {
   ast::pipeline definition;
 };
 
+struct builtin_operator {
+  builtin_operator(const int* ir_plugin,
+                   const operator_factory_plugin* factory_plugin)
+    : ir_plugin{ir_plugin}, factory_plugin{factory_plugin} {
+  }
+
+  // We have at least one of these.
+  // OR: We always have an IR plugin, but maybe not a legacy plugin.
+  const int* ir_plugin;
+  const operator_factory_plugin* factory_plugin;
+};
+
 /// Operators are either operator plugins or user-defined operators.
 struct operator_def {
 public:
@@ -29,18 +41,21 @@ public:
   }
 
   explicit(false) operator_def(const operator_factory_plugin& plugin)
-    : kind_{plugin} {
+    : kind_{builtin_operator{nullptr, &plugin}} {
   }
 
   /// Instantiate the operator with the given arguments.
   auto make(operator_factory_plugin::invocation inv, session ctx) const
     -> failure_or<operator_ptr>;
 
-  // TODO
-public:
-  std::variant<std::reference_wrapper<const operator_factory_plugin>,
-               user_defined_operator>
-    kind_;
+  // TODO: Remove this?
+  auto inner() const
+    -> const variant<builtin_operator, user_defined_operator>& {
+    return kind_;
+  }
+
+private:
+  variant<builtin_operator, user_defined_operator> kind_;
 };
 
 /// A set of entities, with a most one entity per entity namespace.

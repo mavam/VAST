@@ -57,8 +57,14 @@ auto operator_def::make(operator_factory_plugin::invocation inv,
       TRY(auto compiled, compile(ast::pipeline{udo.definition}, ctx));
       return std::make_unique<pipeline>(std::move(compiled));
     },
-    [&](const operator_factory_plugin& plugin) -> failure_or<operator_ptr> {
-      return plugin.make(inv, ctx);
+    [&](const builtin_operator& op) -> failure_or<operator_ptr> {
+      if (not op.factory_plugin) {
+        diagnostic::error("this operator can only be used with the new IR")
+          .primary(inv.self)
+          .emit(ctx);
+        return failure::promise();
+      }
+      return op.factory_plugin->make(inv, ctx);
     });
 }
 

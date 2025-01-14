@@ -21,9 +21,23 @@ setup() {
 }
 
 @test "two lets" {
-  check tenzir 'let $foo = 42 | let $bar = now()'
+  check tenzir '
+let $foo = 42
+let $bar = now()
+  '
 }
 
 @test "two lets with dependency" {
-  check tenzir 'let $foo = 42 | let $bar = $foo + 1'
+  check tenzir '
+let $foo = 42
+let $bar = $foo + 1
+  '
+}
+
+@test "operator does not exist" {
+  check ! tenzir 'does_not_exist'
+}
+
+@test "one operator" {
+  check tenzir 'version'
 }

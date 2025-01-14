@@ -1,26 +1,26 @@
 {
   lets: [
     {
-      ident: `$foo` @ 4..8,
+      ident: `$foo` @ 5..9,
       expr: constant {
         value: int64 42,
-        source: 11..13
+        source: 12..14
       },
       id: 1
     },
     {
-      ident: `$bar` @ 20..24,
+      ident: `$bar` @ 19..23,
       expr: function_call {
         fn: {
           path: [
-            `now` @ 27..30
+            `now` @ 26..29
           ],
           ref: std::now/fn
         },
         args: [
           
         ],
-        rpar: 31..32,
+        rpar: 30..31,
         method: false
       },
       id: 2
