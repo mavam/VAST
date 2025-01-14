@@ -15,7 +15,9 @@ namespace tenzir {
 class compile_ctx {
 public:
   static auto create_root(diagnostic_handler& dh) -> compile_ctx {
-    return compile_ctx{dh};
+    return compile_ctx{
+      std::make_shared<state>(std::make_shared<shared>(dh),
+                              std::unordered_map<std::string, ir::let_id>{})};
   }
 
   auto reg() const -> const registry& {
@@ -23,35 +25,71 @@ public:
   }
 
   auto dh() const -> diagnostic_handler& {
-    return dh_;
+    return state_->shared->dh;
   }
 
   explicit(false) operator diagnostic_handler&() const {
     return dh();
   }
 
-  // [[nodiscard]] auto with_empty_env() const -> compile_ctx;
+  [[nodiscard]] auto with_empty_env() const -> compile_ctx {
+    return compile_ctx{std::make_shared<state>(
+      state_->shared, std::unordered_map<std::string, ir::let_id>{})};
+  }
+
+  [[nodiscard]] auto with_new_scope() const -> compile_ctx {
+    return compile_ctx{std::make_shared<state>(*state_)};
+  }
+
   // [[nodiscard]] auto with_new_binding(std::string_view name) const
   //   -> std::pair<ir::let_id, compile_ctx>;
 
-  // TODO: Not make this part of `compile_ctx`.
+  // TODO: Not make this part of `compile_ctx`??
   auto let(std::string name) -> ir::let_id {
-    // TODO
-    last_let_id_ += 1;
-    return ir::let_id{last_let_id_};
+    auto id = new_let_id();
+    // TODO: Overwrite?
+    state_->env[std::move(name)] = id;
+    return id;
   }
 
   auto get(std::string_view name) const -> std::optional<ir::let_id> {
     // TODO
-    return {};
+    auto it = state_->env.find(std::string{name});
+    if (it == state_->env.end()) {
+      return {};
+    }
+    return it->second;
   }
 
 private:
-  explicit compile_ctx(diagnostic_handler& dh) : dh_{dh} {
+  auto new_let_id() -> ir::let_id {
+    state_->shared->last_let_id += 1;
+    return ir::let_id{state_->shared->last_let_id};
   }
 
-  uint64_t last_let_id_ = 0;
-  diagnostic_handler& dh_;
+  struct shared {
+    explicit shared(diagnostic_handler& dh) : dh{dh} {
+    }
+
+    diagnostic_handler& dh;
+    uint64_t last_let_id = 0;
+  };
+
+  struct state {
+    state(std::shared_ptr<shared> shared,
+          std::unordered_map<std::string, ir::let_id> env)
+      : shared{std::move(shared)}, env{std::move(env)} {
+    }
+
+    std::shared_ptr<shared> shared;
+    std::unordered_map<std::string, ir::let_id> env;
+  };
+
+  explicit compile_ctx(std::shared_ptr<state> state)
+    : state_{std::move(state)} {
+  }
+
+  std::shared_ptr<state> state_;
 };
 
 } // namespace tenzir

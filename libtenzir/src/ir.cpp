@@ -165,6 +165,7 @@ public:
     // type-check at the end of instantiation. That also sounds reasonable.
     auto over = std::move(inv.args[0]);
     TRY(bind(over, ctx));
+    ctx = ctx.with_new_scope();
     auto id = ctx.let("group");
     auto pipe = as<ast::pipeline_expr>(inv.args[1]);
     TRY(auto pipe_ir, std::move(pipe.inner).compile(ctx));
@@ -397,7 +398,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
           // TODO: What about diagnostics that end up here?
           // We need to provide a context that does not feature any outer
           // variables. Maybe if there were arguments.
-          auto udo_ctx = compile_ctx::create_root(ctx.dh());
+          auto udo_ctx = ctx.with_empty_env();
           // What if we don't get its IR, but use the AST instead? That would
           // mean that we would have to compile its AST again and again. But
           // that's okay. So we get by with random let ids?
@@ -429,6 +430,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
       },
       [&](ast::let_stmt& x) -> failure_or<void> {
         TRY(bind(x.expr, ctx));
+        ctx = ctx.with_new_scope();
         auto id = ctx.let(x.name.name);
         lets.emplace_back(std::move(x.name), std::move(x.expr), id);
         return {};
@@ -442,7 +444,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
         if (x.else_) {
           TRY(else_, std::move(*x.else_).compile(ctx));
         }
-        operators.push_back(std::make_unique<if_operator>(
+        operators.emplace_back(std::make_unique<if_operator>(
           std::move(x.condition), std::move(then), std::move(else_)));
         return {};
       },
