@@ -1,0 +1,32 @@
+{
+  lets: [
+    {
+      ident: `$foo` @ 4..8,
+      expr: constant {
+        value: int64 42,
+        source: 11..13
+      },
+      id: 1
+    },
+    {
+      ident: `$bar` @ 20..24,
+      expr: function_call {
+        fn: {
+          path: [
+            `now` @ 27..30
+          ],
+          ref: std::now/fn
+        },
+        args: [
+          
+        ],
+        rpar: 31..32,
+        method: false
+      },
+      id: 2
+    }
+  ],
+  operators: [
+    
+  ]
+}

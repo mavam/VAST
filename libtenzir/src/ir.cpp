@@ -397,7 +397,7 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
           // TODO: What about diagnostics that end up here?
           // We need to provide a context that does not feature any outer
           // variables. Maybe if there were arguments.
-          auto udo_ctx = compile_ctx::test(ctx.dh());
+          auto udo_ctx = compile_ctx::create_root(ctx.dh());
           // What if we don't get its IR, but use the AST instead? That would
           // mean that we would have to compile its AST again and again. But
           // that's okay. So we get by with random let ids?
@@ -428,8 +428,9 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
         return failure::promise();
       },
       [&](ast::let_stmt& x) -> failure_or<void> {
+        TRY(bind(x.expr, ctx));
         auto id = ctx.let(x.name.name);
-        lets.emplace_back(std::move(x.name), x.expr, id);
+        lets.emplace_back(std::move(x.name), std::move(x.expr), id);
         return {};
       },
       [&](ast::if_stmt& x) -> failure_or<void> {

@@ -15,3 +15,15 @@ setup() {
 @test "one let" {
   check tenzir 'let $foo = 42'
 }
+
+@test "one let with unknown variable" {
+  check ! tenzir 'let $foo = $bar'
+}
+
+@test "two lets" {
+  check tenzir 'let $foo = 42 | let $bar = now()'
+}
+
+@test "two lets with dependency" {
+  check tenzir 'let $foo = 42 | let $bar = $foo + 1'
+}

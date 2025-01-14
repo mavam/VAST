@@ -337,7 +337,7 @@ auto exec2(std::string_view source, diagnostic_handler& dh,
       return not ctx.has_failure();
     }
     if (cfg.dump_ir) {
-      auto compile = compile_ctx::test(ctx.dh());
+      auto compile = compile_ctx::create_root(ctx.dh());
       TRY(auto ir, std::move(parsed).compile(compile));
       fmt::print("{:#?}\n", ir);
       // TODO: Maybe not true.

@@ -1,0 +1,6 @@
+error: unknown variable
+ --> <input>:1:12
+  |
+1 | let $foo = $bar
+  |            ^^^^ 
+  |

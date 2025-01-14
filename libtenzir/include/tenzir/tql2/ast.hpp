@@ -41,6 +41,11 @@ struct let_id {
   auto operator<=>(const let_id&) const = default;
 
   friend auto inspect(auto& f, let_id& x) -> bool {
+    if (x.id == 0) {
+      if (auto dbg = as_debug_writer(f)) {
+        return dbg->fmt_value("<free>");
+      }
+    }
     return f.apply(x.id);
   }
 };

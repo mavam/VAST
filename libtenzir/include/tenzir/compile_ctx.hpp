@@ -14,7 +14,7 @@ namespace tenzir {
 
 class compile_ctx {
 public:
-  static auto test(diagnostic_handler& dh) -> compile_ctx {
+  static auto create_root(diagnostic_handler& dh) -> compile_ctx {
     return compile_ctx{dh};
   }
 
@@ -42,7 +42,8 @@ public:
   }
 
   auto get(std::string_view name) const -> std::optional<ir::let_id> {
-    TENZIR_TODO();
+    // TODO
+    return {};
   }
 
 private:
