@@ -85,14 +85,15 @@ public:
 
 private:
   auto make_group(data group) const -> failure_or<ir::instantiation> {
-    // group test { from $group }
-    auto u_ctx = substitute_ctx{
-      /*id_ = group*/
-    };
-    auto copy = pipe_;
-    TRY(copy.substitute(u_ctx));
-    auto i_ctx = instantiate_ctx{};
-    return std::move(copy).instantiate(i_ctx);
+    TENZIR_TODO();
+    // // group test { from $group }
+    // auto u_ctx = substitute_ctx{
+    //   /*id_ = group*/
+    // };
+    // auto copy = pipe_;
+    // TRY(copy.substitute(u_ctx));
+    // auto i_ctx = instantiate_ctx{};
+    // return std::move(copy).instantiate(i_ctx);
   }
 
   ast::expression over_;
@@ -182,8 +183,9 @@ public:
 private:
   // TODO: This needs to be part of the actor, not the instance.
   auto start_new() const -> failure_or<ir::instantiation> {
-    auto ctx = instantiate_ctx{};
-    return ir::pipeline{pipe_}.instantiate(ctx);
+    TENZIR_TODO();
+    // auto ctx = instantiate_ctx{};
+    // return ir::pipeline{pipe_}.instantiate(ctx);
   }
 
   duration interval_;
@@ -379,6 +381,89 @@ private:
   ir::pipeline else_;
 };
 
+class legacy_ir_wrapper final : public ir::operator_base {
+public:
+  legacy_ir_wrapper() = default;
+
+  legacy_ir_wrapper(const operator_factory_plugin* plugin, ast::invocation inv)
+    : state_{partial{plugin, std::move(inv)}} {
+  }
+
+  auto name() const -> std::string override {
+    return "legacy_ir_wrapper";
+  }
+
+  auto substitute(substitute_ctx ctx) -> failure_or<void> override {
+    auto state = try_as<partial>(state_);
+    if (not state) {
+      return {};
+    }
+    auto done = true;
+    for (auto& arg : state->inv.args) {
+      TRY(auto here, arg.substitute(ctx));
+      done = done and here == ast::substitute_result::no_remaining;
+    }
+    if (not done) {
+      return {};
+    }
+    auto provider = session_provider::make(ctx.dh());
+    TRY(state_, state->plugin->make(
+                  operator_factory_plugin::invocation{
+                    std::move(state->inv.op), std::move(state->inv.args)},
+                  provider.as_session()));
+    return {};
+  }
+
+  auto
+  instantiate(instantiate_ctx ctx) && -> failure_or<ir::instantiation> override {
+    TENZIR_TODO();
+  }
+
+  friend auto inspect(auto& f, legacy_ir_wrapper& x) -> bool {
+    return f.apply(x.state_);
+  }
+
+private:
+  struct partial {
+    const operator_factory_plugin* plugin;
+    ast::invocation inv;
+
+    friend auto inspect(auto& f, partial& x) -> bool {
+      return f.object(x).fields(
+        f.field(
+          "plugin",
+          [&]() {
+            TENZIR_ASSERT(x.plugin);
+            return x.plugin->name();
+          },
+          [&](std::string name) {
+            x.plugin = plugins::find<operator_factory_plugin>(name);
+            TENZIR_ASSERT(x.plugin);
+            return true;
+          }),
+        f.field("inv", x.inv));
+    }
+  };
+
+  variant<partial, operator_ptr> state_;
+};
+
+namespace {
+
+auto register_plugin_very_hackily = std::invoke([]() {
+  auto ptr = plugin_ptr::make_builtin(
+    new inspection_plugin<ir::operator_base, legacy_ir_wrapper>{},
+    [](plugin* plugin) {
+      delete plugin;
+    },
+    nullptr, {});
+  const auto it = std::ranges::upper_bound(plugins::get_mutable(), ptr);
+  plugins::get_mutable().insert(it, std::move(ptr));
+  return std::monostate{};
+});
+
+} // namespace
+
 auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
   // TODO: Or do we assume that entities are already resolved?
   TRY(resolve_entities(*this, ctx));
@@ -398,10 +483,16 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
           op.inner(),
           [&](const builtin_operator& op) -> failure_or<void> {
             if (not op.ir_plugin) {
-              diagnostic::error("this operator cannot be used with the new IR")
-                .primary(x.op)
-                .emit(ctx);
-              return failure::promise();
+              TENZIR_ASSERT(op.factory_plugin);
+              operators.emplace_back(std::make_unique<legacy_ir_wrapper>(
+                op.factory_plugin, std::move(x)));
+              TRY(operators.back()->substitute(substitute_ctx{ctx.dh()}));
+              return {};
+              // diagnostic::error("this operator cannot be used with the new
+              // IR")
+              //   .primary(x.op)
+              //   .emit(ctx);
+              // return failure::promise();
             }
             // TODO
             auto plugin = static_cast<op_parser_plugin*>(nullptr);
@@ -487,7 +578,7 @@ auto ir::pipeline::instantiate(
   for (auto& let : lets) {
     // We have to update every expression as we evaluate `let`s because later
     // bindings might reference earlier ones.
-    auto sub_ctx = substitute_ctx{/*env*/};
+    auto sub_ctx = substitute_ctx{ctx.dh(), /*env*/};
     TRY(auto subst, let.expr.substitute(sub_ctx));
     TENZIR_ASSERT(subst == ast::substitute_result::no_remaining);
     TRY(auto value, const_eval(let.expr, ctx));
@@ -507,7 +598,7 @@ auto ir::pipeline::instantiate(
   // then instantiate it.
   auto result = std::vector<ir::instance_ptr>{};
   for (auto& op : operators) {
-    auto sub_ctx = substitute_ctx{/*env*/};
+    auto sub_ctx = substitute_ctx{ctx.dh(), /*env*/};
     TRY(op->substitute(sub_ctx));
     TRY(auto ops, std::move(*op).instantiate(ctx));
     result.insert(result.end(), std::move_iterator{ops.begin()},

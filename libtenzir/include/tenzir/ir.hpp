@@ -20,20 +20,40 @@ using operator_actor = int;
 
 class instantiate_ctx {
 public:
-  explicit(false) operator diagnostic_handler&() const {
-    TENZIR_TODO();
+  explicit instantiate_ctx(diagnostic_handler& dh) : dh_{dh} {
   }
+
+  auto dh() const -> diagnostic_handler& {
+    return dh_;
+  }
+
+  explicit(false) operator diagnostic_handler&() const {
+    return dh();
+  }
+
+private:
+  diagnostic_handler& dh_;
 };
 
 class substitute_ctx {
 public:
+  explicit substitute_ctx(diagnostic_handler& dh) : dh_{dh} {
+  }
+
   auto get(ir::let_id id) const -> std::optional<ast::constant::kind> {
     TENZIR_TODO();
   }
 
-  explicit(false) operator diagnostic_handler&() const {
-    TENZIR_TODO();
+  auto dh() -> diagnostic_handler& {
+    return dh_;
   }
+
+  explicit(false) operator diagnostic_handler&() {
+    return dh();
+  }
+
+private:
+  diagnostic_handler& dh_;
 };
 
 namespace ir {
