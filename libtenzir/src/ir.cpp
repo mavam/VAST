@@ -381,6 +381,19 @@ private:
   ir::pipeline else_;
 };
 
+class legacy_instance final : public ir::instance {
+public:
+  explicit legacy_instance(operator_ptr op) : op_{std::move(op)} {
+  }
+
+  auto spawn(/*args*/) const -> operator_actor override {
+    TENZIR_TODO();
+  }
+
+private:
+  operator_ptr op_;
+};
+
 class legacy_ir_wrapper final : public ir::operator_base {
 public:
   legacy_ir_wrapper() = default;
@@ -416,7 +429,23 @@ public:
 
   auto
   instantiate(instantiate_ctx ctx) && -> failure_or<ir::instantiation> override {
-    TENZIR_TODO();
+    // TODO: What if we are still partial here?
+    (void)ctx;
+    return std::make_unique<legacy_instance>(
+      as<operator_ptr>(std::move(state_)));
+  }
+
+  auto infer_type(operator_type2 input)
+    -> variant<operator_type2, operator_type_error> override {
+    auto op = try_as<operator_ptr>(state_);
+    if (not op) {
+      return operator_type_error::unknown;
+    }
+    auto converted = match(input, [](auto x) -> operator_type2 {
+      // TODO: This is where we could convert `chunk_ptr` types.
+      return x;
+    });
+    (*op)->infer_type()
   }
 
   friend auto inspect(auto& f, legacy_ir_wrapper& x) -> bool {

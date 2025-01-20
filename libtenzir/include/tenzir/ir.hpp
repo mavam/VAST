@@ -16,6 +16,10 @@
 
 namespace tenzir {
 
+using operator_type2 = tag_variant<void, table_slice, chunk_ptr>;
+
+TENZIR_ENUM(operator_type_error, unknown, invalid);
+
 using operator_actor = int;
 
 class instantiate_ctx {
@@ -121,6 +125,10 @@ public:
   // Or do we get it earlier? Or later?
   virtual auto instantiate(instantiate_ctx ctx) && -> failure_or<instantiation>
     = 0;
+
+  // TODO: Do we want to allow "I don't know" as an answer?
+  virtual auto infer_type(operator_type2 input)
+    -> variant<operator_type2, operator_type_error>;
 
   // TODO: Or can we give the optimizer a more global view?
   // virtual auto optimize(/*args*/) -> std::monostate;
