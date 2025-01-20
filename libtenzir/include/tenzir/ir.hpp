@@ -66,6 +66,11 @@ class instance {
 public:
   virtual ~instance() = default;
 
+  // TODO: Need this for serialization?
+  virtual auto name() const -> std::string {
+    return "TODO";
+  }
+
   // The instance already knows its own configuration. The arguments are just
   // for establishing streams, etc.
   virtual auto spawn(/*args*/) const -> operator_actor {
@@ -75,6 +80,11 @@ public:
 
 // TODO: Can we inspect this? We probably need to.
 using instance_ptr = std::unique_ptr<instance>;
+
+// TODO
+auto inspect(auto& f, instance_ptr& x) -> bool {
+  return plugin_inspect(f, x);
+}
 
 // TODO: Check and reconsider.
 class instantiation {

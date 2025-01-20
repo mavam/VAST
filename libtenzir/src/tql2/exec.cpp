@@ -355,10 +355,14 @@ auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
       TENZIR_UNREACHABLE();
     });
   TRY(result);
-
   // TODO: Properly create context objects.
   auto i_ctx = instantiate_ctx{ctx.dh()};
   TRY(auto instance, std::move(ir).instantiate(i_ctx));
+  if (cfg.dump_instantiation) {
+    fmt::print("{:#?}", use_default_formatter(instance));
+    // TODO: Maybe not true?
+    return true;
+  }
   if (ctx.has_failure()) {
     // Do not proceed to execution if there has been an error.
     return false;

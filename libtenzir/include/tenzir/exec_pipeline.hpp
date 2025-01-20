@@ -23,6 +23,7 @@ struct exec_config {
   bool dump_diagnostics = false;
   bool dump_metrics = false;
   bool dump_ir = false;
+  bool dump_instantiation = false;
   bool tql2 = false;
   bool strict = false;
 };
