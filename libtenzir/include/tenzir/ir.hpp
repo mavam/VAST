@@ -127,8 +127,11 @@ public:
     = 0;
 
   // TODO: Do we want to allow "I don't know" as an answer?
-  virtual auto infer_type(operator_type2 input)
-    -> variant<operator_type2, operator_type_error>;
+  virtual auto infer_type(operator_type2 input) const
+    -> variant<operator_type2, operator_type_error> {
+    (void)input;
+    return operator_type_error::unknown;
+  }
 
   // TODO: Or can we give the optimizer a more global view?
   // virtual auto optimize(/*args*/) -> std::monostate;
@@ -228,6 +231,10 @@ struct pipeline {
   auto substitute(substitute_ctx ctx) -> failure_or<void>;
 
   auto instantiate(instantiate_ctx ctx) && -> failure_or<instantiation>;
+
+  // TODO: This does not contain sufficient information to report errors.
+  auto infer_type(operator_type2 input) const
+    -> variant<operator_type2, operator_type_error>;
 
   friend auto inspect(auto& f, pipeline& x) -> bool {
     return f.object(x).fields(f.field("lets", x.lets),

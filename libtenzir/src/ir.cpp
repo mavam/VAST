@@ -435,17 +435,23 @@ public:
       as<operator_ptr>(std::move(state_)));
   }
 
-  auto infer_type(operator_type2 input)
+  auto infer_type(operator_type2 input) const
     -> variant<operator_type2, operator_type_error> override {
     auto op = try_as<operator_ptr>(state_);
     if (not op) {
       return operator_type_error::unknown;
     }
-    auto converted = match(input, [](auto x) -> operator_type2 {
+    auto legacy_input = match(input, [](auto x) -> operator_type {
       // TODO: This is where we could convert `chunk_ptr` types.
       return x;
     });
-    (*op)->infer_type()
+    auto legacy_output = (*op)->infer_type(legacy_input);
+    if (not legacy_output) {
+      return operator_type_error::invalid;
+    }
+    return match(*legacy_output, [](auto x) -> operator_type2 {
+      return x;
+    });
   }
 
   friend auto inspect(auto& f, legacy_ir_wrapper& x) -> bool {
@@ -634,6 +640,14 @@ auto ir::pipeline::instantiate(
                   std::move_iterator{ops.end()});
   }
   return std::move(result);
+}
+
+auto ir::pipeline::infer_type(operator_type2 input) const
+  -> variant<operator_type2, operator_type_error> {
+  for (auto& op : operators) {
+    TRY(input, op->infer_type(input));
+  }
+  return input;
 }
 
 class substitutor : ast::visitor<substitutor> {

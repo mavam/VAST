@@ -319,6 +319,56 @@ auto dump_tokens(std::span<token const> tokens, std::string_view source)
   return not has_error;
 }
 
+namespace {
+
+auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
+  -> failure_or<bool> {
+  auto c_ctx = compile_ctx::create_root(ctx.dh());
+  TRY(auto ir, std::move(ast).compile(c_ctx));
+  if (cfg.dump_ir) {
+    fmt::print("{:#?}\n", ir);
+    // TODO: Maybe not true.
+    return true;
+  }
+  // TODO: Try to type check?
+  auto result = match(
+    ir.infer_type(tag_v<void>),
+    [&](operator_type2 output) -> failure_or<void> {
+      if (output.is_not<void>()) {
+        // TODO: Implicit sinks.
+        // TODO: Location?
+        diagnostic::error("expected pipeline to be closed").emit(ctx);
+        return failure::promise();
+      }
+      return {};
+    },
+    [&](operator_type_error error) -> failure_or<void> {
+      switch (error) {
+        case operator_type_error::unknown:
+          // We need to wait for instantiation.
+          return {};
+        case operator_type_error::invalid:
+          // TODO: Location?
+          diagnostic::error("pipeline is not well-typed").emit(ctx);
+          return failure::promise();
+      }
+      TENZIR_UNREACHABLE();
+    });
+  TRY(result);
+
+  // TODO: Properly create context objects.
+  auto i_ctx = instantiate_ctx{ctx.dh()};
+  TRY(auto instance, std::move(ir).instantiate(i_ctx));
+  if (ctx.has_failure()) {
+    // Do not proceed to execution if there has been an error.
+    return false;
+  }
+  diagnostic::error("execution not implemented yet").emit(ctx);
+  return not ctx.has_failure();
+}
+
+} // namespace
+
 auto exec2(std::string_view source, diagnostic_handler& dh,
            const exec_config& cfg, caf::actor_system& sys) -> bool {
   TENZIR_UNUSED(sys);
@@ -336,12 +386,10 @@ auto exec2(std::string_view source, diagnostic_handler& dh,
       fmt::print("{:#?}\n", parsed);
       return not ctx.has_failure();
     }
-    if (cfg.dump_ir) {
-      auto compile = compile_ctx::create_root(ctx.dh());
-      TRY(auto ir, std::move(parsed).compile(compile));
-      fmt::print("{:#?}\n", ir);
-      // TODO: Maybe not true.
-      return true;
+    // TODO: Provide a flag for this.
+    // NOLINTNEXTLINE(readability-simplify-boolean-expr)
+    if (true) {
+      return exec_with_ir(std::move(parsed), cfg, ctx);
     }
     TRY(auto pipe, compile(std::move(parsed), ctx));
     if (cfg.dump_pipeline) {
