@@ -38,6 +38,15 @@ Operator | Description | Example
 [`top`](./operators/top.md) | Shows the most common values | `top user`
 [`rare`](./operators/rare.md) | Shows the least common values | `rare auth.token`
 
+## Charting
+
+Operator | Description | Example
+:--------|:------------|:-------
+[`chart_area`](./operators/chart_area.md) | Visualizes events on an area chart | `chart_area`
+[`chart_bar`](./operators/chart_bar.md) | Visualizes events on a bar chart | `chart_bar`
+[`chart_line`](./operators/chart_line.md) | Visualizes events on a line chart | `chart_line`
+[`chart_pie`](./operators/chart_pie.md) | Visualizes events on a pie chart | `chart_pie`
+
 ## Flow Control
 
 Operator | Description | Example
