@@ -485,7 +485,7 @@ public:
           .parse(operator_factory_plugin::invocation{std::move(inv.op),
                                                      std::move(inv.args)},
                  provider.as_session()));
-    TRY(bind(expr, ctx));
+    TRY(expr.bind(ctx));
     return std::make_unique<where_ir>(loc, std::move(expr));
   }
 

@@ -23,9 +23,9 @@ public:
   class scope;
   using env_t = std::unordered_map<std::string, let_id>;
 
-  /// Create a new compile context, which is owned by a `root` object.
+  /// Create a new context, which is owned by the returned `root` object.
   ///
-  /// The root object must be kept alive while the compile context is used.
+  /// The root object must be kept alive while the context is being used.
   static auto make_root(diagnostic_handler& dh, const registry& reg) -> root;
 
   /// Open a new variable scope within this context.
@@ -40,7 +40,7 @@ public:
   /// Return the full environment containing all bindings.
   auto env() const -> env_t;
 
-  /// Create a copy of this compile context, but without the environment.
+  /// Create a copy of this context, but without the environment.
   [[nodiscard]] auto without_env() const -> compile_ctx;
 
   /// A scope object owns the environment from which the context reads.

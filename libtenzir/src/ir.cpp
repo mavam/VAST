@@ -38,150 +38,6 @@ auto make_where_ir(ast::expression filter) -> ir::operator_ptr {
 
 } // namespace
 
-// -------------------------------------------------------------------------
-// This shows that we can have the operator spawning logic into the operator
-// implementation, which would be the "normal" case. But it's not required.
-
-class easy_operator : public ir::operator_base {
-public:
-  virtual auto spawn(/*args*/) && -> operator_actor = 0;
-
-  auto finalize(finalize_ctx ctx) && -> failure_or<exec::pipeline> override;
-};
-
-class easy_exec final : public exec::operator_base {
-public:
-  easy_exec() = default;
-
-  auto name() const -> std::string override {
-    return "easy_exec";
-  }
-
-  explicit easy_exec(ir::operator_ptr impl) : impl_{std::move(impl)} {
-    TENZIR_ASSERT(dynamic_cast<easy_operator*>(impl_.get()));
-  }
-
-  auto spawn(/*args*/) const -> operator_actor override {
-    auto ptr = dynamic_cast<easy_operator*>(&*impl_);
-    TENZIR_ASSERT(ptr);
-    return std::move(*ptr).spawn(/*args*/);
-  }
-
-  friend auto inspect(auto& f, easy_exec& x) -> bool {
-    return f.apply(x.impl_);
-  }
-
-private:
-  // TODO: We store the type-erased version here because of `inspect`.
-  ir::operator_ptr impl_;
-};
-
-inline auto
-easy_operator::finalize(finalize_ctx ctx) && -> failure_or<exec::pipeline> {
-  (void)ctx;
-  return std::make_unique<easy_exec>(std::move(*this).move());
-}
-
-class head_operator final : public easy_operator {
-public:
-  head_operator() = default;
-
-  explicit head_operator(ast::expression count) : count_{std::move(count)} {
-  }
-
-  auto name() const -> std::string override {
-    return "head_ir";
-  }
-
-  auto substitute(substitute_ctx ctx, bool instantiate)
-    -> failure_or<void> override {
-    auto expr = try_as<ast::expression>(count_);
-    if (not expr) {
-      return {};
-    }
-    TRY(expr->substitute(ctx));
-    if (instantiate or expr->is_deterministic()) {
-      TRY(auto value, const_eval(*expr, ctx));
-      TRY(count_, match(
-                    value,
-                    [&](int64_t& x) -> failure_or<int64_t> {
-                      return x;
-                    },
-                    [&](auto&) -> failure_or<int64_t> {
-                      diagnostic::error("bad type").primary(*expr).emit(ctx);
-                      return failure::promise();
-                      // TODO: Handle other numbers.
-                    }));
-    }
-    return {};
-  }
-
-  auto spawn() && -> operator_actor override {
-    auto count = as<int64_t>(count_);
-    TENZIR_WARN("spawning head {}", count);
-    TENZIR_TODO();
-  }
-
-private:
-  variant<ast::expression, int64_t> count_;
-};
-
-class binder : public ast::visitor<binder> {
-public:
-  explicit binder(compile_ctx ctx) : ctx_{ctx} {
-  }
-
-  void visit(ast::dollar_var& x) {
-    if (x.let) {
-      return;
-    }
-    auto name = x.name_without_dollar();
-    if (auto let = ctx_.get(name)) {
-      x.let = *let;
-    } else {
-      auto available = std::vector<std::string>{};
-      for (auto& [name, _] : ctx_.env()) {
-        available.push_back("`$" + name + "`");
-      }
-      auto d = diagnostic::error("unknown variable").primary(x);
-      if (available.empty()) {
-        d = std::move(d).hint("no variables are available here");
-      } else {
-        d = std::move(d).hint("available are {}", fmt::join(available, ", "));
-      }
-      std::move(d).emit(ctx_);
-      result_ = failure::promise();
-    }
-  }
-
-  void visit(ast::pipeline_expr& x) {
-    // TODO: What should happen? If `ast::constant` would allow `ir::pipeline`,
-    // then we could compile it here. However, what environment do we take?
-    diagnostic::error("cannot have pipeline here").primary(x.begin).emit(ctx_);
-    result_ = failure::promise();
-    // enter(x);
-  }
-
-  template <class T>
-  void visit(T& x) {
-    enter(x);
-  }
-
-  auto result() -> failure_or<void> {
-    return result_;
-  }
-
-private:
-  failure_or<void> result_;
-  compile_ctx ctx_;
-};
-
-auto bind(ast::expression& x, compile_ctx ctx) -> failure_or<void> {
-  auto b = binder{ctx};
-  b.visit(x);
-  return b.result();
-}
-
 class if_exec final : public exec::operator_base {
 public:
   if_exec() = default;
@@ -527,13 +383,13 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
               for (auto& x : x.args) {
                 // TODO: This doesn't work for operators which take
                 // subpipelines... Should we just disallow subpipelines here?
-                TRY(bind(x, ctx));
+                TRY(x.bind(ctx));
               }
               operators.emplace_back(
                 std::make_unique<legacy_ir>(op.factory_plugin, std::move(x)));
               // TODO: Empty substitution?
               TRY(operators.back()->substitute(
-                substitute_ctx{ctx.dh(), nullptr}, false));
+                substitute_ctx{ctx.dh(), ctx.reg(), nullptr}, false));
               return {};
               // diagnostic::error("this operator cannot be used with the new
               // IR")
@@ -578,13 +434,13 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
         return failure::promise();
       },
       [&](ast::let_stmt& x) -> failure_or<void> {
-        TRY(bind(x.expr, ctx));
+        TRY(x.expr.bind(ctx));
         auto id = scope.let(std::string{x.name_without_dollar()});
         lets.emplace_back(std::move(x.name), std::move(x.expr), id);
         return {};
       },
       [&](ast::if_stmt& x) -> failure_or<void> {
-        TRY(bind(x.condition, ctx));
+        TRY(x.condition.bind(ctx));
         TRY(auto then, std::move(x.then).compile(ctx));
         // We just use an empty pipeline if none is given. This has the same
         // behavior as when there is no `else` branch.
@@ -613,8 +469,7 @@ auto ir::pipeline::substitute(substitute_ctx ctx, bool instantiate)
     for (auto& let : lets) {
       // We have to update every expression as we evaluate `let`s because later
       // bindings might reference earlier ones.
-      auto sub_ctx = substitute_ctx{ctx.dh(), &env};
-      TRY(auto subst, let.expr.substitute(sub_ctx));
+      TRY(auto subst, let.expr.substitute(ctx.with_env(&env)));
       TENZIR_ASSERT(subst == ast::substitute_result::no_remaining);
       TRY(auto value, const_eval(let.expr, ctx));
       // TODO: Clean this up.
@@ -631,8 +486,7 @@ auto ir::pipeline::substitute(substitute_ctx ctx, bool instantiate)
     }
     // Update each operator with the produced bindings.
     for (auto& op : operators) {
-      auto sub_ctx = substitute_ctx{ctx.dh(), &env};
-      TRY(op->substitute(sub_ctx, true));
+      TRY(op->substitute(ctx.with_env(&env), true));
     }
     // We don't need the lets anymore.
     lets.clear();

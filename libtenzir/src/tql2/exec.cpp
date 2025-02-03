@@ -339,7 +339,7 @@ auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
   // TODO: Do we want to already substitute true constants in non-instantiated
   // subpipelines here? Or should that happen somewhere else? Could also help
   // with type-checking.
-  auto sub_ctx = substitute_ctx{ctx.dh(), nullptr};
+  auto sub_ctx = substitute_ctx{ctx.dh(), ctx.reg(), nullptr};
   TRY(ir.substitute(sub_ctx, true));
   if (cfg.dump_inst_ir) {
     fmt::print("{:#?}\n", ir);

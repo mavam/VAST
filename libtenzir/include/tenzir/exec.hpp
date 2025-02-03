@@ -12,7 +12,7 @@
 
 namespace tenzir {
 
-// Where to put this?
+// TODO: Figure out how this actually looks like.
 using operator_actor = int;
 
 } // namespace tenzir

@@ -18,17 +18,21 @@ namespace tenzir {
 /// Context when substituting let bindings with a constant.
 class substitute_ctx {
 public:
+  using env_t = std::unordered_map<let_id, ast::constant::kind>;
+
   /// Construct a new context with the given environment.
   ///
   /// If `env == nullptr`, then an empty environment is assumed.
-  substitute_ctx(diagnostic_handler& dh,
-                 const std::unordered_map<let_id, ast::constant::kind>* env);
+  substitute_ctx(diagnostic_handler& dh, const registry& reg, const env_t* env);
 
   /// Return the constant stored for the given `let`, if already known.
   auto get(let_id id) const -> std::optional<ast::constant::kind>;
 
-  /// Returns all constants that can be substituted with this context.
-  auto env() const -> std::unordered_map<let_id, ast::constant::kind>;
+  /// Return all constants that can be substituted with this context.
+  auto env() const -> env_t;
+
+  /// Return a new context that uses the given environment.
+  auto with_env(const env_t* env) const -> substitute_ctx;
 
   auto dh() -> diagnostic_handler& {
     return dh_;
@@ -38,9 +42,14 @@ public:
     return dh();
   }
 
+  explicit(false) operator const registry&() {
+    return reg_;
+  }
+
 private:
   diagnostic_handler& dh_;
-  const std::unordered_map<let_id, ast::constant::kind>* env_;
+  const registry& reg_;
+  const env_t* env_;
 };
 
 } // namespace tenzir

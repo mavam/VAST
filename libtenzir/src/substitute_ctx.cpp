@@ -10,10 +10,9 @@
 
 namespace tenzir {
 
-substitute_ctx::substitute_ctx(
-  diagnostic_handler& dh,
-  const std::unordered_map<let_id, ast::constant::kind>* env)
-  : dh_{dh}, env_{env} {
+substitute_ctx::substitute_ctx(diagnostic_handler& dh, const registry& reg,
+                               const env_t* env)
+  : dh_{dh}, reg_{reg}, env_{env} {
 }
 
 auto substitute_ctx::get(let_id id) const
@@ -34,6 +33,10 @@ auto substitute_ctx::env() const
     return {};
   }
   return *env_;
+}
+
+auto substitute_ctx::with_env(const env_t* env) const -> substitute_ctx {
+  return substitute_ctx{dh_, reg_, env};
 }
 
 } // namespace tenzir

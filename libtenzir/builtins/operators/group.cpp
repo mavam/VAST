@@ -34,12 +34,12 @@ public:
   }
 
 private:
-  auto make_group(ast::constant::kind group, diagnostic_handler& dh) const
-    -> failure_or<exec::pipeline> {
+  auto make_group(ast::constant::kind group, diagnostic_handler& dh,
+                  const registry& reg) const -> failure_or<exec::pipeline> {
     auto env = std::unordered_map<let_id, ast::constant::kind>{};
     env[id_] = std::move(group);
     auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, &env}, true));
+    TRY(copy.substitute(substitute_ctx{dh, reg, &env}, true));
     // TODO: Optimize it before finalize?
     return std::move(copy).finalize(finalize_ctx{dh});
   }
@@ -97,7 +97,7 @@ public:
     -> failure_or<ir::operator_ptr> override {
     TENZIR_ASSERT(inv.args.size() == 2);
     auto over = std::move(inv.args[0]);
-    TRY(bind(over, ctx));
+    TRY(over.bind(ctx));
     auto scope = ctx.open_scope();
     auto id = scope.let("group");
     auto pipe = as<ast::pipeline_expr>(inv.args[1]);

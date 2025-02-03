@@ -359,9 +359,10 @@ public:
 
 private:
   // TODO: This needs to be part of the actor.
-  auto start_new(diagnostic_handler& dh) const -> failure_or<exec::pipeline> {
+  auto start_new(diagnostic_handler& dh, const registry& reg) const
+    -> failure_or<exec::pipeline> {
     auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, nullptr}, true));
+    TRY(copy.substitute(substitute_ctx{dh, reg, nullptr}, true));
     // TODO: Where is the type check?
     return std::move(copy).finalize(finalize_ctx{dh});
   }
@@ -400,7 +401,7 @@ public:
       interval_,
       [&](ast::expression& expr) -> failure_or<void> {
         TRY(expr.substitute(ctx));
-        if (instantiate or expr.is_deterministic()) {
+        if (instantiate or expr.is_deterministic(ctx)) {
           TRY(auto value, const_eval(expr, ctx));
           auto cast = try_as<duration>(value);
           if (not cast) {
@@ -485,7 +486,7 @@ public:
         .emit(ctx);
       return failure::promise();
     }
-    TRY(bind(inv.args[0], ctx));
+    TRY(inv.args[0].bind(ctx));
     auto pipe = as<ast::pipeline_expr>(inv.args[1]);
     TRY(auto pipe_ir, std::move(pipe.inner).compile(ctx));
     return std::make_unique<every_ir>(std::move(inv.args[0]),

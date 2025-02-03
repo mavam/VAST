@@ -201,14 +201,21 @@ inline constexpr auto enable_default_formatter<ir::pipeline> = true;
 /// Plugin for transforming the AST of an operator invocation to its IR.
 class operator_compiler_plugin : public virtual plugin {
 public:
+  /// Return the IR operator for the given AST invocation.
+  ///
+  /// Note that any `let` bindings in the arguments are not bound yet. This
+  /// means that the implementation must call `expr.bind(ctx)` itself. The
+  /// reason for that is that pipeline expressions can not be bound because the
+  /// operator itself can introduce new bindings. Thus, we cannot bind inside
+  /// pipeline expressions. For consistency, we decided to not bind anything.
   virtual auto compile(ast::invocation inv, compile_ctx ctx) const
     -> failure_or<ir::operator_ptr>
     = 0;
 
+  /// Return the name of the operator, including `::` for modules.
+  ///
+  /// By default, this returns the name of the plugin.
   virtual auto operator_name() const -> std::string;
 };
-
-/// Performs name-resolution for all free `$` variables.
-auto bind(ast::expression& x, compile_ctx ctx) -> failure_or<void>;
 
 } // namespace tenzir

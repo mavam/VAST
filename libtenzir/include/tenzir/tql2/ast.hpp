@@ -225,9 +225,14 @@ struct expression {
 
   auto get_location() const -> location;
 
-  auto substitute(substitute_ctx ctx) -> failure_or<substitute_result>;
+  /// Performs name-resolution for all free `$` variables.
+  auto bind(compile_ctx ctx) & -> failure_or<void>;
 
-  auto is_deterministic() const -> bool;
+  /// Partially substitute previously name-resolved variables.
+  auto substitute(substitute_ctx ctx) & -> failure_or<substitute_result>;
+
+  /// Returns true if the expression always returns the same value.
+  auto is_deterministic(const registry& reg) const -> bool;
 };
 
 /// A "simple selector" has a path that contains only constant field names.

@@ -9,6 +9,7 @@
 #include "tenzir/tql2/ast.hpp"
 
 #include "caf/binary_deserializer.hpp"
+#include "tenzir/compile_ctx.hpp"
 #include "tenzir/concept/convertible/data.hpp"
 #include "tenzir/concept/convertible/to.hpp"
 #include "tenzir/concept/parseable/string/char_class.hpp"
@@ -379,6 +380,66 @@ auto split_legacy_expression(const ast::expression& x)
 
 namespace {
 
+class binder : public ast::visitor<binder> {
+public:
+  explicit binder(compile_ctx ctx) : ctx_{ctx} {
+  }
+
+  void visit(ast::dollar_var& x) {
+    if (x.let) {
+      return;
+    }
+    auto name = x.name_without_dollar();
+    if (auto let = ctx_.get(name)) {
+      x.let = *let;
+    } else {
+      auto available = std::vector<std::string>{};
+      for (auto& [name, _] : ctx_.env()) {
+        available.push_back("`$" + name + "`");
+      }
+      auto d = diagnostic::error("unknown variable").primary(x);
+      if (available.empty()) {
+        d = std::move(d).hint("no variables are available here");
+      } else {
+        d = std::move(d).hint("available are {}", fmt::join(available, ", "));
+      }
+      std::move(d).emit(ctx_);
+      result_ = failure::promise();
+    }
+  }
+
+  void visit(ast::pipeline_expr& x) {
+    // TODO: What should happen? If `ast::constant` would allow `ir::pipeline`,
+    // then we could compile it here. However, what environment do we take?
+    diagnostic::error("cannot have pipeline here").primary(x.begin).emit(ctx_);
+    result_ = failure::promise();
+    // enter(x);
+  }
+
+  template <class T>
+  void visit(T& x) {
+    enter(x);
+  }
+
+  auto result() -> failure_or<void> {
+    return result_;
+  }
+
+private:
+  failure_or<void> result_;
+  compile_ctx ctx_;
+};
+
+} // namespace
+
+auto ast::expression::bind(compile_ctx ctx) & -> failure_or<void> {
+  auto b = binder{ctx};
+  b.visit(*this);
+  return b.result();
+}
+
+namespace {
+
 class substitutor : public ast::visitor<substitutor> {
 public:
   explicit substitutor(substitute_ctx ctx) : ctx_{ctx} {
@@ -418,26 +479,32 @@ private:
 } // namespace
 
 // TODO: Where to put this?
-auto ast::expression::substitute(substitute_ctx ctx)
-  -> failure_or<substitute_result> {
+auto ast::expression::substitute(
+  substitute_ctx ctx) & -> failure_or<substitute_result> {
   auto visitor = substitutor{ctx};
   visitor.visit(*this);
   return visitor.result();
 }
 
-/// If this function returns `true`, then the expression can be safely passed to
-/// `const_eval` before the operator is instantiated.
-auto ast::expression::is_deterministic() const -> bool {
+auto ast::expression::is_deterministic(const registry& reg) const -> bool {
   // TODO: Handle other cases.
   return match(
     [](const ast::constant&) {
       return true;
     },
-    [](const ast::unary_expr& x) {
-      return x.expr.is_deterministic();
+    [&](const ast::unary_expr& x) {
+      return x.expr.is_deterministic(reg);
     },
-    [](const ast::binary_expr& x) {
-      return x.left.is_deterministic() and x.right.is_deterministic();
+    [&](const ast::binary_expr& x) {
+      return x.left.is_deterministic(reg) and x.right.is_deterministic(reg);
+    },
+    [&](const ast::function_call& x) {
+      for (auto& arg : x.args) {
+        if (not arg.is_deterministic(reg)) {
+          return false;
+        }
+      }
+      return reg.get(x).is_deterministic();
     },
     [](const auto&) {
       return false;
