@@ -9,6 +9,7 @@
 #include "tenzir/ir.hpp"
 
 #include "tenzir/compile_ctx.hpp"
+#include "tenzir/exec.hpp"
 #include "tenzir/finalize_ctx.hpp"
 #include "tenzir/plugin.hpp"
 #include "tenzir/substitute_ctx.hpp"
@@ -21,40 +22,18 @@ namespace tenzir {
 
 namespace {
 
+/// Create a `where` operator with the given expression.
 auto make_where_ir(ast::expression filter) -> ir::operator_ptr {
-  // TODO: This is a terrible hack. I just want to create a `where`!!
+  // TODO: Due to being a plugin, this is way more complicated than it has to be.
   auto where = plugins::find<operator_compiler_plugin>("tql2.where");
   TENZIR_ASSERT(where);
   auto args = std::vector<ast::expression>{};
   args.push_back(std::move(filter));
-  // TODO: No. Please don't do this.
+  // TODO: This is a terrible workaround.
   auto dh = null_diagnostic_handler{};
-  auto ctx = compile_ctx::make_root(dh);
-  // TODO: Unknown entity location.
-  // TODO: Oh no... Not an `unwrap`.
+  auto ctx = compile_ctx::make_root(dh, global_registry());
   return where->compile(ast::invocation{ast::entity{{}}, std::move(args)}, ctx)
     .unwrap();
-}
-
-/// If this function returns `true`, then the expression can be safely passed to
-/// `const_eval` before the operator is instantiated.
-inline auto is_deterministic(const ast::expression& x) -> bool {
-  // TODO: Handle other cases.
-  // TODO: Should return `false` for `dollar_var`, right?
-  return match(
-    x,
-    [](const ast::constant&) {
-      return true;
-    },
-    [](const ast::unary_expr& x) {
-      return is_deterministic(x.expr);
-    },
-    [](const ast::binary_expr& x) {
-      return is_deterministic(x.left) and is_deterministic(x.right);
-    },
-    [](const auto&) {
-      return false;
-    });
 }
 
 } // namespace
@@ -121,7 +100,7 @@ public:
       return {};
     }
     TRY(expr->substitute(ctx));
-    if (instantiate or is_deterministic(*expr)) {
+    if (instantiate or expr->is_deterministic()) {
       TRY(auto value, const_eval(*expr, ctx));
       TRY(count_, match(
                     value,
@@ -145,217 +124,6 @@ public:
 
 private:
   variant<ast::expression, int64_t> count_;
-};
-
-class group_exec final : public exec::operator_base {
-public:
-  group_exec() = default;
-
-  group_exec(ast::expression over, ir::pipeline pipe, ir::let_id id)
-    : over_{std::move(over)}, pipe_{std::move(pipe)}, id_{id} {
-  }
-
-  auto name() const -> std::string override {
-    return "group_exec";
-  }
-
-  friend auto inspect(auto& f, group_exec& x) -> bool {
-    return f.object(x).fields(f.field("over", x.over_),
-                              f.field("pipe", x.pipe_), f.field("id", x.id_));
-  }
-
-private:
-  auto make_group(ast::constant::kind group, diagnostic_handler& dh) const
-    -> failure_or<exec::pipeline> {
-    auto env = std::unordered_map<ir::let_id, ast::constant::kind>{};
-    env[id_] = std::move(group);
-    auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, &env}, true));
-    // TODO: Optimize it before finalize?
-    return std::move(copy).finalize(finalize_ctx{dh});
-  }
-
-  ast::expression over_;
-  ir::pipeline pipe_;
-  ir::let_id id_;
-};
-
-class group_ir final : public ir::operator_base {
-public:
-  group_ir() = default;
-
-  group_ir(ast::expression over, ir::pipeline pipe, ir::let_id id)
-    : over_{std::move(over)}, pipe_{std::move(pipe)}, id_{id} {
-  }
-
-  auto name() const -> std::string override {
-    return "group_ir";
-  }
-
-  auto substitute(substitute_ctx ctx, bool instantiate)
-    -> failure_or<void> override {
-    TRY(over_.substitute(ctx));
-    // This operator instantiates the subpipeline on its own.
-    (void)instantiate;
-    TRY(pipe_.substitute(ctx, false));
-    return {};
-  }
-
-  auto finalize(finalize_ctx ctx) && -> failure_or<exec::pipeline> override {
-    (void)ctx;
-    return std::make_unique<group_exec>(std::move(over_), std::move(pipe_),
-                                        id_);
-  }
-
-  friend auto inspect(auto& f, group_ir& x) -> bool {
-    return f.object(x).fields(f.field("over", x.over_),
-                              f.field("pipe", x.pipe_), f.field("id", x.id_));
-  }
-
-private:
-  ast::expression over_;
-  ir::pipeline pipe_;
-  ir::let_id id_;
-};
-
-class group_plugin final : public operator_compiler_plugin {
-public:
-  auto name() const -> std::string override {
-    return "group";
-  }
-
-  auto compile(ast::invocation inv, compile_ctx ctx) const
-    -> failure_or<ir::operator_ptr> override {
-    TENZIR_ASSERT(inv.args.size() == 2);
-    auto over = std::move(inv.args[0]);
-    TRY(bind(over, ctx));
-    auto scope = ctx.open_scope();
-    auto id = scope.let("group");
-    auto pipe = as<ast::pipeline_expr>(inv.args[1]);
-    TRY(auto pipe_ir, std::move(pipe.inner).compile(ctx));
-    return std::make_unique<group_ir>(std::move(over), std::move(pipe_ir), id);
-  }
-};
-
-class every_exec final : public exec::operator_base {
-public:
-  every_exec() = default;
-
-  every_exec(duration interval, ir::pipeline pipe)
-    : interval_{interval}, pipe_{std::move(pipe)} {
-  }
-
-  auto name() const -> std::string override {
-    return "every_exec";
-  }
-
-  friend auto inspect(auto& f, every_exec& x) -> bool {
-    return f.object(x).fields(f.field("interval", x.interval_),
-                              f.field("pipe", x.pipe_));
-  }
-
-private:
-  // TODO: This needs to be part of the actor.
-  auto start_new(diagnostic_handler& dh) const -> failure_or<exec::pipeline> {
-    auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, nullptr}, true));
-    // TODO: Where is the type check?
-    return std::move(copy).finalize(finalize_ctx{dh});
-  }
-
-  duration interval_{};
-  ir::pipeline pipe_;
-};
-
-class every_ir final : public ir::operator_base {
-public:
-  every_ir() = default;
-
-  every_ir(ast::expression interval, ir::pipeline pipe)
-    : interval_{std::move(interval)}, pipe_{std::move(pipe)} {
-  }
-
-  auto name() const -> std::string override {
-    return "every_ir";
-  }
-
-  auto finalize(finalize_ctx ctx) && -> failure_or<exec::pipeline> override {
-    (void)ctx;
-    // TODO: Test the instantiation of the subpipeline? But in general,
-    // instantiation is done later by the actor.
-    // TRY(auto pipe, tenzir::instantiate(std::move(pipe_), ctx));
-    // We know that this succeeds because instantiation must happen before.
-    auto interval = as<duration>(interval_);
-    return std::make_unique<every_exec>(interval, std::move(pipe_));
-  }
-
-  auto substitute(substitute_ctx ctx, bool instantiate)
-    -> failure_or<void> override {
-    TRY(match(
-      interval_,
-      [&](ast::expression& expr) -> failure_or<void> {
-        TRY(expr.substitute(ctx));
-        if (instantiate or is_deterministic(expr)) {
-          TRY(auto value, const_eval(expr, ctx));
-          auto cast = try_as<duration>(value);
-          if (not cast) {
-            diagnostic::error("expected `duration`, got `TODO`")
-              .primary(expr)
-              .emit(ctx);
-            return failure::promise();
-          }
-          // We can also do some extended validation here...
-          if (*cast <= duration::zero()) {
-            diagnostic::error("expected a positive duration")
-              .primary(expr)
-              .emit(ctx);
-            return failure::promise();
-          }
-          interval_ = *cast;
-        }
-        return {};
-      },
-      [&](duration&) -> failure_or<void> {
-        return {};
-      }));
-    TRY(pipe_.substitute(ctx, false));
-    return {};
-  }
-
-  friend auto inspect(auto& f, every_ir& x) -> bool {
-    return f.object(x).fields(f.field("interval", x.interval_),
-                              f.field("pipe", x.pipe_));
-  }
-
-private:
-  variant<ast::expression, duration> interval_;
-  ir::pipeline pipe_;
-};
-
-class every_plugin final : public operator_compiler_plugin {
-public:
-  auto name() const -> std::string override {
-    return "every2";
-  }
-
-  auto operator_name() const -> std::string override {
-    return "every";
-  }
-
-  auto compile(ast::invocation inv, compile_ctx ctx) const
-    -> failure_or<ir::operator_ptr> override {
-    if (inv.args.size() != 2) {
-      diagnostic::error("expected exactly two arguments")
-        .primary(inv.op)
-        .emit(ctx);
-      return failure::promise();
-    }
-    TRY(bind(inv.args[0], ctx));
-    auto pipe = as<ast::pipeline_expr>(inv.args[1]);
-    TRY(auto pipe_ir, std::move(pipe.inner).compile(ctx));
-    return std::make_unique<every_ir>(std::move(inv.args[0]),
-                                      std::move(pipe_ir));
-  }
 };
 
 class binder : public ast::visitor<binder> {
@@ -720,12 +488,6 @@ auto register_plugin_very_hackily = std::invoke([]() {
     //
     new inspection_plugin<ir::operator_base, if_ir>{},
     new inspection_plugin<exec::operator_base, if_exec>{},
-    new every_plugin{},
-    new inspection_plugin<ir::operator_base, every_ir>{},
-    new inspection_plugin<exec::operator_base, every_exec>{},
-    new group_plugin{},
-    new inspection_plugin<ir::operator_base, group_ir>{},
-    new inspection_plugin<exec::operator_base, group_exec>{},
   };
   for (auto y : x) {
     auto ptr = plugin_ptr::make_builtin(y,
@@ -937,58 +699,6 @@ auto ir::pipeline::optimize(optimize_filter filter,
   return {std::move(filter), order, std::move(replacement)};
 }
 
-class substitutor : public ast::visitor<substitutor> {
-public:
-  explicit substitutor(substitute_ctx ctx) : ctx_{ctx} {
-  }
-
-  void visit(ast::expression& x) {
-    if (auto var = try_as<ast::dollar_var>(x)) {
-      if (auto value = ctx_.get(var->let)) {
-        x = ast::constant{std::move(*value), var->get_location()};
-      } else {
-        result_ = ast::substitute_result::some_remaining;
-      }
-    } else {
-      enter(x);
-    }
-  }
-
-  // This is handled by the `ast::expression` case.
-  // TODO: Can we `delete`? It's still used by base class.
-  void visit(ast::dollar_var&) {
-    TENZIR_UNREACHABLE();
-  }
-
-  // void visit(ast::pipeline_expr& x) {
-  //   // TODO: ?????
-  //   // If `ast::expression` allowed `ir::pipeline`, we could compile the inner
-  //   // pipeline here (or before) and update it. But what would that mean? What
-  //   // would constant evaluation of a pipeline expression return?
-  // }
-
-  template <class T>
-  void visit(T& x) {
-    enter(x);
-  }
-
-  auto result() const -> ast::substitute_result {
-    return result_;
-  }
-
-private:
-  ast::substitute_result result_ = ast::substitute_result::no_remaining;
-  substitute_ctx ctx_;
-};
-
-// TODO: Where to put this?
-auto ast::expression::substitute(substitute_ctx ctx)
-  -> failure_or<substitute_result> {
-  auto visitor = substitutor{ctx};
-  visitor.visit(*this);
-  return visitor.result();
-}
-
 auto ir::operator_base::optimize(optimize_filter filter,
                                  event_order order) && -> optimize_result {
   (void)order;
@@ -1031,32 +741,6 @@ auto ir::operator_base::move() && -> operator_ptr {
   return copy();
 }
 
-substitute_ctx::substitute_ctx(
-  diagnostic_handler& dh,
-  const std::unordered_map<ir::let_id, ast::constant::kind>* env)
-  : dh_{dh}, env_{env} {
-}
-
-auto substitute_ctx::get(ir::let_id id) const
-  -> std::optional<ast::constant::kind> {
-  if (not env_) {
-    return std::nullopt;
-  }
-  auto it = env_->find(id);
-  if (it == env_->end()) {
-    return std::nullopt;
-  }
-  return it->second;
-}
-
-auto substitute_ctx::env() const
-  -> std::unordered_map<ir::let_id, ast::constant::kind> {
-  if (not env_) {
-    return {};
-  }
-  return *env_;
-}
-
 auto ir::operator_base::infer_type(operator_type2 input,
                                    diagnostic_handler& dh) const
   -> failure_or<std::optional<operator_type2>> {
@@ -1072,4 +756,5 @@ auto operator_compiler_plugin::operator_name() const -> std::string {
   }
   return result;
 }
+
 } // namespace tenzir

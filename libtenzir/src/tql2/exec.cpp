@@ -11,6 +11,7 @@
 #include "tenzir/compile_ctx.hpp"
 #include "tenzir/detail/assert.hpp"
 #include "tenzir/diagnostics.hpp"
+#include "tenzir/exec.hpp"
 #include "tenzir/exec_pipeline.hpp"
 #include "tenzir/finalize_ctx.hpp"
 #include "tenzir/ir.hpp"
@@ -328,7 +329,7 @@ namespace {
 auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
   -> failure_or<bool> {
   // Transform the AST into IR.
-  auto c_ctx = compile_ctx::make_root(ctx.dh());
+  auto c_ctx = compile_ctx::make_root(ctx.dh(), ctx.reg());
   TRY(auto ir, std::move(ast).compile(c_ctx));
   if (cfg.dump_ir) {
     fmt::print("{:#?}\n", ir);

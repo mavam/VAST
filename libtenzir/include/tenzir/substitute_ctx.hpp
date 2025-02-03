@@ -22,13 +22,13 @@ public:
   ///
   /// If `env == nullptr`, then an empty environment is assumed.
   substitute_ctx(diagnostic_handler& dh,
-                 const std::unordered_map<ir::let_id, ast::constant::kind>* env);
+                 const std::unordered_map<let_id, ast::constant::kind>* env);
 
   /// Return the constant stored for the given `let`, if already known.
-  auto get(ir::let_id id) const -> std::optional<ast::constant::kind>;
+  auto get(let_id id) const -> std::optional<ast::constant::kind>;
 
   /// Returns all constants that can be substituted with this context.
-  auto env() const -> std::unordered_map<ir::let_id, ast::constant::kind>;
+  auto env() const -> std::unordered_map<let_id, ast::constant::kind>;
 
   auto dh() -> diagnostic_handler& {
     return dh_;
@@ -40,7 +40,7 @@ public:
 
 private:
   diagnostic_handler& dh_;
-  const std::unordered_map<ir::let_id, ast::constant::kind>* env_;
+  const std::unordered_map<let_id, ast::constant::kind>* env_;
 };
 
 } // namespace tenzir

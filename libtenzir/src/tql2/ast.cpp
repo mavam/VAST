@@ -18,6 +18,7 @@
 #include "tenzir/detail/assert.hpp"
 #include "tenzir/detail/debug_writer.hpp"
 #include "tenzir/expression.hpp"
+#include "tenzir/substitute_ctx.hpp"
 #include "tenzir/tql/basic.hpp"
 #include "tenzir/tql2/eval.hpp"
 #include "tenzir/tql2/plugin.hpp"
@@ -373,6 +374,73 @@ auto split_legacy_expression(const ast::expression& x)
         };
       }
       return std::pair{trivially_true_expression(), x};
+    });
+}
+
+namespace {
+
+class substitutor : public ast::visitor<substitutor> {
+public:
+  explicit substitutor(substitute_ctx ctx) : ctx_{ctx} {
+  }
+
+  void visit(ast::expression& x) {
+    if (auto var = try_as<ast::dollar_var>(x)) {
+      if (auto value = ctx_.get(var->let)) {
+        x = ast::constant{std::move(*value), var->get_location()};
+      } else {
+        result_ = ast::substitute_result::some_remaining;
+      }
+    } else {
+      enter(x);
+    }
+  }
+
+  void visit(ast::dollar_var&) {
+    // This is handled by the `ast::expression` case above.
+    TENZIR_UNREACHABLE();
+  }
+
+  template <class T>
+  void visit(T& x) {
+    enter(x);
+  }
+
+  auto result() const -> ast::substitute_result {
+    return result_;
+  }
+
+private:
+  ast::substitute_result result_ = ast::substitute_result::no_remaining;
+  substitute_ctx ctx_;
+};
+
+} // namespace
+
+// TODO: Where to put this?
+auto ast::expression::substitute(substitute_ctx ctx)
+  -> failure_or<substitute_result> {
+  auto visitor = substitutor{ctx};
+  visitor.visit(*this);
+  return visitor.result();
+}
+
+/// If this function returns `true`, then the expression can be safely passed to
+/// `const_eval` before the operator is instantiated.
+auto ast::expression::is_deterministic() const -> bool {
+  // TODO: Handle other cases.
+  return match(
+    [](const ast::constant&) {
+      return true;
+    },
+    [](const ast::unary_expr& x) {
+      return x.expr.is_deterministic();
+    },
+    [](const ast::binary_expr& x) {
+      return x.left.is_deterministic() and x.right.is_deterministic();
+    },
+    [](const auto&) {
+      return false;
     });
 }
 

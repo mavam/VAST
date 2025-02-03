@@ -13,6 +13,7 @@
 #include "tenzir/detail/enum.hpp"
 #include "tenzir/detail/type_list.hpp"
 #include "tenzir/diagnostics.hpp"
+#include "tenzir/let_id.hpp"
 #include "tenzir/location.hpp"
 #include "tenzir/tql2/entity_path.hpp"
 
@@ -31,44 +32,6 @@ auto make_dependent(U&& x) -> U&& {
 }
 
 } // namespace tenzir::detail
-
-namespace tenzir::ir {
-
-// TODO: Move this?
-struct let_id {
-  uint64_t id = 0;
-
-  explicit operator bool() const {
-    return id != 0;
-  }
-
-  auto operator<=>(const let_id&) const = default;
-
-  friend auto inspect(auto& f, let_id& x) -> bool {
-    if (x.id == 0) {
-      if (auto dbg = as_debug_writer(f)) {
-        return dbg->fmt_value("<free>");
-      }
-    }
-    return f.apply(x.id);
-  }
-};
-
-} // namespace tenzir::ir
-
-template <>
-struct std::hash<tenzir::ir::let_id> {
-  auto operator()(const tenzir::ir::let_id& x) const -> size_t {
-    return std::hash<decltype(x.id)>{}(x.id);
-  }
-};
-
-namespace tenzir {
-
-template <>
-inline constexpr auto enable_default_formatter<ir::let_id> = true;
-
-} // namespace tenzir
 
 namespace tenzir::ast {
 
@@ -147,7 +110,7 @@ struct dollar_var {
   }
 
   identifier ident;
-  ir::let_id let;
+  let_id let;
 };
 
 struct null {};
@@ -263,6 +226,8 @@ struct expression {
   auto get_location() const -> location;
 
   auto substitute(substitute_ctx ctx) -> failure_or<substitute_result>;
+
+  auto is_deterministic() const -> bool;
 };
 
 /// A "simple selector" has a path that contains only constant field names.

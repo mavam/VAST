@@ -1,5 +1,6 @@
 //    _   _____   __________
-//   | | / / _ | / __/_  __/     Visibility | |/ / __ |_\ \  / /          Across
+//   | | / / _ | / __/_  __/     Visibility
+//   | |/ / __ |_\ \  / /          Across
 //   |___/_/ |_/___/ /_/       Space and Time
 //
 // SPDX-FileCopyrightText: (c) 2025 The Tenzir Contributors
@@ -7,8 +8,6 @@
 
 #pragma once
 
-#include "tenzir/diagnostics.hpp"
-#include "tenzir/exec.hpp"
 #include "tenzir/plugin.hpp"
 #include "tenzir/tql2/ast.hpp"
 
