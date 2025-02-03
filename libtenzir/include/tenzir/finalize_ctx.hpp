@@ -8,28 +8,28 @@
 
 #pragma once
 
-#include "tenzir/diagnostics.hpp"
+#include "tenzir/base_ctx.hpp"
 
 namespace tenzir {
 
-/// Context when transforming `ir::operator_ptr` to `exec::operator_ptr`.
-///
-/// TODO: At the moment, this is only a diagnostic handler?
+/// Context when transforming the IR to `exec::operator_ptr`.
 class finalize_ctx {
 public:
-  explicit finalize_ctx(diagnostic_handler& dh) : dh_{dh} {
+  // TODO: Right now, this is just the base context. If we know that we don't
+  // need anything else then we could delete this.
+  explicit finalize_ctx(base_ctx ctx) : ctx_{ctx} {
   }
 
-  auto dh() const -> diagnostic_handler& {
-    return dh_;
+  auto dh() -> diagnostic_handler& {
+    return ctx_;
   }
 
-  explicit(false) operator diagnostic_handler&() const {
-    return dh();
+  explicit(false) operator diagnostic_handler&() {
+    return ctx_;
   }
 
 private:
-  diagnostic_handler& dh_;
+  base_ctx ctx_;
 };
 
 } // namespace tenzir

@@ -31,7 +31,7 @@ auto make_where_ir(ast::expression filter) -> ir::operator_ptr {
   args.push_back(std::move(filter));
   // TODO: This is a terrible workaround.
   auto dh = null_diagnostic_handler{};
-  auto ctx = compile_ctx::make_root(dh, global_registry());
+  auto ctx = compile_ctx::make_root(base_ctx{dh, global_registry()});
   return where->compile(ast::invocation{ast::entity{{}}, std::move(args)}, ctx)
     .unwrap();
 }
@@ -213,7 +213,7 @@ public:
       TENZIR_ASSERT(not instantiate);
       return {};
     }
-    auto provider = session_provider::make(ctx.dh());
+    auto provider = session_provider::make(ctx);
     TRY(state_, state->plugin->make(
                   operator_factory_plugin::invocation{
                     std::move(state->inv.op), std::move(state->inv.args)},
@@ -388,8 +388,8 @@ auto ast::pipeline::compile(compile_ctx ctx) && -> failure_or<ir::pipeline> {
               operators.emplace_back(
                 std::make_unique<legacy_ir>(op.factory_plugin, std::move(x)));
               // TODO: Empty substitution?
-              TRY(operators.back()->substitute(
-                substitute_ctx{ctx.dh(), ctx.reg(), nullptr}, false));
+              TRY(operators.back()->substitute(substitute_ctx{ctx, nullptr},
+                                               false));
               return {};
               // diagnostic::error("this operator cannot be used with the new
               // IR")

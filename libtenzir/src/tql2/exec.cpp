@@ -329,7 +329,7 @@ namespace {
 auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
   -> failure_or<bool> {
   // Transform the AST into IR.
-  auto c_ctx = compile_ctx::make_root(ctx.dh(), ctx.reg());
+  auto c_ctx = compile_ctx::make_root(base_ctx{ctx.dh(), ctx.reg()});
   TRY(auto ir, std::move(ast).compile(c_ctx));
   if (cfg.dump_ir) {
     fmt::print("{:#?}\n", ir);
@@ -339,7 +339,7 @@ auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
   // TODO: Do we want to already substitute true constants in non-instantiated
   // subpipelines here? Or should that happen somewhere else? Could also help
   // with type-checking.
-  auto sub_ctx = substitute_ctx{ctx.dh(), ctx.reg(), nullptr};
+  auto sub_ctx = substitute_ctx{c_ctx, nullptr};
   TRY(ir.substitute(sub_ctx, true));
   if (cfg.dump_inst_ir) {
     fmt::print("{:#?}\n", ir);
@@ -364,7 +364,7 @@ auto exec_with_ir(ast::pipeline ast, const exec_config& cfg, session ctx)
     return not ctx.has_failure();
   }
   // Finalize the IR into something that we can execute.
-  auto i_ctx = finalize_ctx{ctx.dh()};
+  auto i_ctx = finalize_ctx{c_ctx};
   TRY(auto finalized, std::move(ir).finalize(i_ctx));
   if (cfg.dump_finalized) {
     fmt::print("{:#?}\n", use_default_formatter(finalized));

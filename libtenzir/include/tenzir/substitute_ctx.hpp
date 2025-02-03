@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "tenzir/base_ctx.hpp"
 #include "tenzir/diagnostics.hpp"
 #include "tenzir/tql2/ast.hpp"
 
@@ -23,7 +24,7 @@ public:
   /// Construct a new context with the given environment.
   ///
   /// If `env == nullptr`, then an empty environment is assumed.
-  substitute_ctx(diagnostic_handler& dh, const registry& reg, const env_t* env);
+  substitute_ctx(base_ctx ctx, const env_t* env);
 
   /// Return the constant stored for the given `let`, if already known.
   auto get(let_id id) const -> std::optional<ast::constant::kind>;
@@ -34,21 +35,16 @@ public:
   /// Return a new context that uses the given environment.
   auto with_env(const env_t* env) const -> substitute_ctx;
 
-  auto dh() -> diagnostic_handler& {
-    return dh_;
-  }
-
   explicit(false) operator diagnostic_handler&() {
-    return dh();
+    return ctx_;
   }
 
   explicit(false) operator const registry&() {
-    return reg_;
+    return ctx_;
   }
 
 private:
-  diagnostic_handler& dh_;
-  const registry& reg_;
+  base_ctx ctx_;
   const env_t* env_;
 };
 

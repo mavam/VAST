@@ -359,12 +359,11 @@ public:
 
 private:
   // TODO: This needs to be part of the actor.
-  auto start_new(diagnostic_handler& dh, const registry& reg) const
-    -> failure_or<exec::pipeline> {
+  auto start_new(base_ctx ctx) const -> failure_or<exec::pipeline> {
     auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, reg, nullptr}, true));
+    TRY(copy.substitute(substitute_ctx{ctx, nullptr}, true));
     // TODO: Where is the type check?
-    return std::move(copy).finalize(finalize_ctx{dh});
+    return std::move(copy).finalize(finalize_ctx{ctx});
   }
 
   duration interval_{};

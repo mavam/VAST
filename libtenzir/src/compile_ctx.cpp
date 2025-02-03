@@ -10,9 +10,8 @@
 
 namespace tenzir {
 
-auto compile_ctx::make_root(diagnostic_handler& dh, const registry& reg)
-  -> root {
-  return root{dh, reg};
+auto compile_ctx::make_root(base_ctx ctx) -> root {
+  return root{ctx};
 }
 
 auto compile_ctx::open_scope() -> scope {
@@ -59,6 +58,10 @@ compile_ctx::scope::scope(std::unique_ptr<env_t> env, root& root)
 
 compile_ctx::root::operator compile_ctx() {
   return compile_ctx{*this, nullptr};
+}
+
+compile_ctx::root::operator base_ctx() const {
+  return ctx_;
 }
 
 compile_ctx::compile_ctx(root& root, const env_t* env)

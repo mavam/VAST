@@ -34,14 +34,14 @@ public:
   }
 
 private:
-  auto make_group(ast::constant::kind group, diagnostic_handler& dh,
-                  const registry& reg) const -> failure_or<exec::pipeline> {
+  auto make_group(ast::constant::kind group, base_ctx ctx) const
+    -> failure_or<exec::pipeline> {
     auto env = std::unordered_map<let_id, ast::constant::kind>{};
     env[id_] = std::move(group);
     auto copy = pipe_;
-    TRY(copy.substitute(substitute_ctx{dh, reg, &env}, true));
+    TRY(copy.substitute(substitute_ctx{ctx, &env}, true));
     // TODO: Optimize it before finalize?
-    return std::move(copy).finalize(finalize_ctx{dh});
+    return std::move(copy).finalize(finalize_ctx{ctx});
   }
 
   ast::expression over_;

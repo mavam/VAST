@@ -153,7 +153,7 @@ auto resolve_entities(ast::pipeline& pipe, session ctx) -> failure_or<void> {
 
 auto resolve_entities(ast::pipeline& pipe, compile_ctx ctx)
   -> failure_or<void> {
-  auto resolver = entity_resolver{ctx.reg(), ctx.dh()};
+  auto resolver = entity_resolver{ctx, ctx};
   resolver.visit(pipe);
   return resolver.get_failure();
 }

@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "tenzir/base_ctx.hpp"
 #include "tenzir/let_id.hpp"
 
 namespace tenzir {
@@ -26,7 +27,7 @@ public:
   /// Create a new context, which is owned by the returned `root` object.
   ///
   /// The root object must be kept alive while the context is being used.
-  static auto make_root(diagnostic_handler& dh, const registry& reg) -> root;
+  static auto make_root(base_ctx ctx) -> root;
 
   /// Open a new variable scope within this context.
   ///
@@ -69,32 +70,29 @@ public:
     root(root&&) = default;
     auto operator=(root&&) -> root& = default;
 
+    operator base_ctx() const;
     operator compile_ctx();
 
   private:
     friend class compile_ctx;
 
-    explicit root(diagnostic_handler& dh, const registry& reg)
-      : dh_{dh}, reg_{reg} {
+    explicit root(base_ctx ctx) : ctx_{ctx} {
     }
 
-    std::reference_wrapper<diagnostic_handler> dh_;
-    std::reference_wrapper<const registry> reg_;
+    base_ctx ctx_;
     uint64_t last_let_id_ = 0;
   };
 
-  /// Return the registry associated with this context.
   auto reg() const -> const registry& {
-    return root_.reg_;
+    return *this;
   }
 
-  /// Return the diagnostic handler associated with this context.
-  auto dh() const -> diagnostic_handler& {
-    return root_.dh_;
+  explicit(false) operator const registry&() const {
+    return root_.ctx_;
   }
 
   explicit(false) operator diagnostic_handler&() const {
-    return dh();
+    return root_.ctx_;
   }
 
 private:
