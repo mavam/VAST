@@ -18,14 +18,14 @@ namespace tenzir::plugins::duration {
 
 namespace {
 
-class plugin final : public function_plugin {
+class duration_plugin final : public function_plugin {
 public:
   auto name() const -> std::string override {
     return "duration";
   }
 
-  auto make_function(invocation inv,
-                     session ctx) const -> failure_or<function_ptr> override {
+  auto make_function(invocation inv, session ctx) const
+    -> failure_or<function_ptr> override {
     auto expr = ast::expression{};
     TRY(argument_parser2::function(name())
           .positional("x", expr, "string")
@@ -76,8 +76,83 @@ public:
     });
   }
 };
+
+class subduration_plugin final : public function_plugin {
+public:
+  subduration_plugin() = default;
+
+  subduration_plugin(std::string name, tenzir::duration unit)
+    : name_{std::move(name)}, unit_{unit} {
+  }
+
+  auto name() const -> std::string override {
+    return name_;
+  }
+
+  auto make_function(invocation inv, session ctx) const
+    -> failure_or<function_ptr> override {
+    auto expr = ast::expression{};
+    TRY(argument_parser2::function(name())
+          .positional("x", expr, "duration")
+          .parse(inv, ctx));
+    return function_use::make([this, expr = std::move(expr)](
+                                evaluator eval, session ctx) -> series {
+      auto b = double_type::make_arrow_builder(arrow::default_memory_pool());
+      check(b->Reserve(eval.length()));
+      for (auto& arg : eval(expr)) {
+        match(
+          *arg.array,
+          [&](const arrow::NullArray& arg) {
+            check(b->AppendNulls(arg.length()));
+          },
+          [&](const arrow::DurationArray& arg) {
+            for (auto v : values(duration_type{}, arg)) {
+              if (not v) {
+                check(b->AppendNull());
+                continue;
+              }
+              check(b->Append(static_cast<double>(v->count()) / unit_.count()));
+            }
+          },
+          [&](const auto&) {
+            diagnostic::warning("`{}` expected `duration`, but got `{}`", name_,
+                                arg.type.kind())
+              .primary(expr)
+              .emit(ctx);
+            check(b->AppendNulls(arg.length()));
+          });
+      }
+      return series{double_type{}, finish(*b)};
+    });
+  }
+
+private:
+  std::string name_;
+  tenzir::duration unit_;
+};
+
 } // namespace
 
 } // namespace tenzir::plugins::duration
 
-TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::plugin)
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::duration_plugin)
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "nanoseconds", std::chrono::nanoseconds{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "microseconds", std::chrono::microseconds{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "milliseconds", std::chrono::milliseconds{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "seconds", std::chrono::seconds{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "minutes", std::chrono::minutes{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "hours", std::chrono::hours{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "days", std::chrono::days{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "weeks", std::chrono::weeks{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "months", std::chrono::months{1}})
+TENZIR_REGISTER_PLUGIN(tenzir::plugins::duration::subduration_plugin{
+  "years", std::chrono::years{1}})
