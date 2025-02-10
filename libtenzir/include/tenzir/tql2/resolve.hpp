@@ -13,6 +13,9 @@
 
 namespace tenzir {
 
+// TODO: Cleanup?
+auto resolve_entities(ast::pipeline& pipe, compile_ctx ctx) -> failure_or<void>;
+
 auto resolve_entities(ast::pipeline& pipe, session ctx) -> failure_or<void>;
 
 auto resolve_entities(ast::expression& expr, session ctx) -> failure_or<void>;

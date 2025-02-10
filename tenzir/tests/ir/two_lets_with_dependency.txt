@@ -1,0 +1,27 @@
+{
+  lets: [
+    {
+      ident: `$foo` @ 4..8,
+      expr: constant {
+        value: int64 42,
+        source: 11..13
+      },
+      id: 1
+    },
+    {
+      ident: `$bar` @ 18..22,
+      expr: binary_expr {
+        left: dollar_var `$foo` -> 1 @ 25..29,
+        op: "add" @ 30..31,
+        right: constant {
+          value: int64 1,
+          source: 32..33
+        }
+      },
+      id: 2
+    }
+  ],
+  operators: [
+    
+  ]
+}

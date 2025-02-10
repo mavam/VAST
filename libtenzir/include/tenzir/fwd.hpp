@@ -182,6 +182,26 @@ class uuid;
 class value_index;
 class wah_bitmap;
 
+class compile_ctx;
+class substitute_ctx;
+class finalize_ctx;
+
+namespace ir {
+
+class operator_base;
+class operator_ptr;
+struct optimize_result;
+struct pipeline;
+
+} // namespace ir
+
+namespace exec {
+
+class operator_base;
+class pipeline;
+
+} // namespace exec
+
 struct active_partition_state;
 struct attribute;
 struct catalog_lookup_result;
